@@ -23,7 +23,7 @@ jobs:
             -v $PWD:/home/user/hostcwd \
             -w /home/user/hostcwd \
             kivy/buildozer:latest \
-            buildozer android debug
+            /bin/bash -c "buildozer android debug"
 
       # 3️⃣ Subir APK generado como artifact
       - name: Upload APK
