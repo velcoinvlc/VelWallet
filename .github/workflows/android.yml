@@ -2,35 +2,35 @@ name: Build VelWallet APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-
+    env:
+      P4A_NON_INTERACTIVE: 1  # evita prompts interactivos
     steps:
-      # 1️⃣ Clonar tu repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Instalar Docker (si no está) y asegurarse que funciona
-      - name: Setup Docker
-        run: docker --version
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
 
-      # 3️⃣ Build APK dentro de Docker
       - name: Build APK with Buildozer
         run: |
           docker run --rm \
+            -v "${{ github.workspace }}:/github/workspace" \
+            -w /github/workspace \
             -e P4A_NON_INTERACTIVE=1 \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
             kivy/buildozer:latest \
-            buildozer android debug --verbose --allow-root
+            buildozer android debug --allow-root
 
-      # 4️⃣ Subir APK como artefacto (v4)
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: VelWallet-debug-apk
+          name: VelWallet-APK
           path: bin/*.apk
