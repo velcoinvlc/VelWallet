@@ -1,0 +1,325 @@
+#:kivy 2.2.0
+#:import dp kivy.metrics.dp
+#:import sp kivy.metrics.sp
+
+<LoginScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(20)
+        spacing: dp(15)
+
+        canvas.before:
+            Color:
+                rgba: 0.04, 0.05, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Widget:
+            size_hint_y: 0.1
+
+        Image:
+            source: "logo.png"
+            size_hint_y: 0.35
+            allow_stretch: True
+            keep_ratio: True
+
+        Label:
+            text: "VelWallet"
+            font_size: sp(30)
+            bold: True
+            color: 0, 1, 0.5, 1
+            size_hint_y: None
+            height: dp(50)
+
+        Widget:
+            size_hint_y: 0.1
+
+        Button:
+            text: "Crear Wallet Nueva"
+            size_hint_y: None
+            height: dp(55)
+            font_size: sp(18)
+            background_color: 0, 1, 0.5, 1
+            on_release: root.create_wallet_popup()
+
+        Button:
+            text: "Importar Wallet"
+            size_hint_y: None
+            height: dp(55)
+            font_size: sp(18)
+            background_color: 0.2, 0.3, 0.8, 1
+            on_release: root.import_wallet_popup()
+
+        Widget:
+
+
+<MainScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+
+        canvas.before:
+            Color:
+                rgba: 0.04, 0.05, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        # HEADER
+        BoxLayout:
+            size_hint_y: None
+            height: dp(60)
+            padding: dp(10)
+
+            canvas.before:
+                Color:
+                    rgba: 0.06, 0.07, 0.2, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            Label:
+                id: address_label
+                text: "Cargando..."
+                font_size: sp(14)
+                color: 0.7, 0.7, 0.8, 1
+                shorten: True
+
+            Button:
+                text: "Cerrar"
+                size_hint_x: 0.3
+                font_size: sp(14)
+                background_color: 0.8, 0.2, 0.2, 1
+                on_release: root.logout()
+
+        # BALANCE PANEL
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: 0.38
+            padding: dp(20)
+            spacing: dp(8)
+
+            canvas.before:
+                Color:
+                    rgba: 0.07, 0.08, 0.22, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [20]
+
+            Label:
+                text: "Balance"
+                font_size: sp(16)
+                color: 0.6, 0.8, 1, 1
+                size_hint_y: None
+                height: dp(30)
+                halign: 'center'
+                text_size: self.width, None
+
+            Label:
+                id: balance_label
+                text: "0.00 VLC"
+                font_size: self.width * 0.09  # ← AUTO AJUSTE
+                bold: True
+                color: 1, 1, 1, 1
+                halign: 'center'
+                valign: 'middle'
+                text_size: self.width, None
+                shorten: True
+                shorten_from: 'center'
+                max_lines: 1
+
+            Label:
+                id: usd_label
+                text: "$0.00"
+                font_size: sp(18)
+                color: 0, 1, 0.5, 1
+                halign: 'center'
+                text_size: self.width, None
+
+        # BOTONES
+        GridLayout:
+            cols: 2
+            spacing: dp(15)
+            padding: dp(20)
+            size_hint_y: 0.42
+
+            Button:
+                text: "Recibir"
+                font_size: sp(18)
+                background_color: 0.2, 0.5, 1, 1
+                on_release: root.show_receive()
+
+            Button:
+                text: "Enviar"
+                font_size: sp(18)
+                background_color: 0, 1, 0.5, 1
+                on_release: root.show_send()
+
+            Button:
+                text: "Historial"
+                font_size: sp(18)
+                background_color: 0.8, 0.6, 0.2, 1
+                on_release: root.show_history()
+
+            Button:
+                text: "Actualizar"
+                font_size: sp(18)
+                background_color: 0.5, 0.2, 0.8, 1
+                on_release: root.load_dashboard()
+
+
+<ReceiveScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(20)
+        spacing: dp(20)
+
+        canvas.before:
+            Color:
+                rgba: 0.04, 0.05, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Label:
+            text: "Recibir VLC"
+            font_size: sp(24)
+            bold: True
+            color: 1,1,1,1
+            size_hint_y: None
+            height: dp(40)
+
+        Image:
+            id: qr_image
+            size_hint: None, None
+            size: dp(260), dp(260)
+            pos_hint: {'center_x':0.5}
+
+        Label:
+            id: addr_label
+            text: "Cargando..."
+            font_size: sp(12)
+            color: 0.7,0.7,0.8,1
+            halign: 'center'
+            text_size: self.width, None
+            size_hint_y: None
+            height: dp(70)
+
+        Button:
+            text: "Guardar Dirección"
+            size_hint_y: None
+            height: dp(50)
+            font_size: sp(16)
+            background_color: 0,1,0.5,1
+            on_release: root.save_address()
+
+        Button:
+            text: "Volver"
+            size_hint_y: None
+            height: dp(50)
+            background_color: 0.8,0.2,0.2,1
+            on_release: app.root.current = 'main'
+
+
+<SendScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(20)
+        spacing: dp(15)
+
+        canvas.before:
+            Color:
+                rgba: 0.04, 0.05, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Label:
+            text: "Enviar VLC"
+            font_size: sp(24)
+            bold: True
+            color: 1,1,1,1
+            size_hint_y: None
+            height: dp(40)
+
+        TextInput:
+            id: recipient_input
+            hint_text: "Dirección destino"
+            multiline: False
+            height: dp(55)
+            size_hint_y: None
+            font_size: sp(16)
+            background_color: 0.1,0.1,0.2,1
+            foreground_color: 1,1,1,1
+
+        Button:
+            text: "Escanear QR"
+            size_hint_y: None
+            height: dp(50)
+            background_color: 0.3,0.5,0.9,1
+            on_release: root.scan_qr()
+
+        TextInput:
+            id: amount_input
+            hint_text: "Cantidad VLC"
+            input_filter: 'float'
+            multiline: False
+            height: dp(55)
+            size_hint_y: None
+            font_size: sp(16)
+            background_color: 0.1,0.1,0.2,1
+            foreground_color: 1,1,1,1
+
+        Button:
+            text: "Enviar"
+            size_hint_y: None
+            height: dp(55)
+            font_size: sp(18)
+            background_color: 0,1,0.5,1
+            on_release: root.send_vlc()
+
+        Widget:
+
+        Button:
+            text: "Volver"
+            size_hint_y: None
+            height: dp(50)
+            background_color: 0.8,0.2,0.2,1
+            on_release: app.root.current = 'main'
+
+
+<HistoryScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+
+        canvas.before:
+            Color:
+                rgba: 0.04, 0.05, 0.15, 1
+            Rectangle:
+                pos: self.pos
+                size: self.size
+
+        Label:
+            text: "Historial"
+            font_size: sp(22)
+            bold: True
+            size_hint_y: None
+            height: dp(50)
+            color: 1,1,1,1
+
+        ScrollView:
+            GridLayout:
+                id: history_layout
+                cols: 1
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(8)
+                padding: dp(10)
+
+        Button:
+            text: "Volver"
+            size_hint_y: None
+            height: dp(50)
+            background_color: 0.8,0.2,0.2,1
+            on_release: app.root.current = 'main'
