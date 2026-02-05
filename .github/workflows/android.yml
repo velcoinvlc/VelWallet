@@ -11,20 +11,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Descargar el repositorio
+      # 1️⃣ Checkout del repositorio
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Instalar Docker (por si no está disponible)
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v2
+      # 2️⃣ Crear carpeta de salida para APK
+      - name: Create output folder
+        run: mkdir -p bin
 
-      # 3️⃣ Ejecutar Buildozer dentro del contenedor como usuario no-root
-      - name: Build APK
+      # 3️⃣ Ejecutar Buildozer en contenedor
+      - name: Build APK with Buildozer
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            --user $(id -u):$(id -g) \
+            -v ${{ github.workspace }}:/hostworkspace \
+            -w /home/user/src \
+            -e P4A_ALLOW_ROOT=1 \
             kivy/buildozer:latest \
-            buildozer android debug
+            /bin/bash -c "cp -r /hostworkspace/* . && buildozer android debug"
+      
+      # 4️⃣ Copiar APK generado al workspace
+      - name: Copy APK to output
+        run: cp /home/user/src/bin/*.apk ${{ github.workspace }}/bin/
+
+      # 5️⃣ Subir APK como artefacto
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VelWallet-APK
+          path: bin/
