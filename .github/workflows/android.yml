@@ -9,23 +9,15 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Build APK with Buildozer (non-root)
         run: |
-          # Creamos un usuario dentro del contenedor y ejecutamos Buildozer como ese usuario
           docker run --rm -t \
-            -v "${{ github.workspace }}:/home/dev/workspace" \
-            -w /home/dev/workspace \
-            kivy/buildozer:latest bash -c "\
-              useradd -m dev && \
-              chown -R dev:dev /home/dev/workspace && \
-              su dev -c 'buildozer android debug'"
-            
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: VelWallet-APK
-          path: bin/*.apk
+            -v "${{ github.workspace }}:/home/builder/workspace" \
+            -w /home/builder/workspace \
+            kivy/buildozer:latest \
+            buildozer android debug
