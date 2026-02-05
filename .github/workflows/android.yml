@@ -17,7 +17,8 @@ jobs:
       - name: Build APK in Docker
         run: |
           docker run --rm \
+          -e P4A_NON_INTERACTIVE=1 \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           kivy/buildozer \
-          buildozer android debug --verbose
+          buildozer android debug --verbose --allow-root
