@@ -9,30 +9,19 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+
     steps:
-      # 1️⃣ Clonar el repositorio
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      # 2️⃣ Configurar Python (Buildozer requiere Python)
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
+      - name: Set up Docker Buildozer
+        run: |
+          docker pull kivy/buildozer:latest
 
-      # 3️⃣ Ejecutar Buildozer en contenedor Docker (no root)
       - name: Build APK
         run: |
-          docker run --rm -t \
+          docker run --rm \
             -e P4A_NON_INTERACTIVE=1 \
-            -v "${{ github.workspace }}:/home/builder/workspace" \
-            -w /home/builder/workspace \
-            kivy/buildozer:latest \
+            -v ${{ github.workspace }}:/workspace \
+            kivy/buildozer \
             buildozer android debug
-
-      # 4️⃣ Subir APK como artifact
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: VelWallet-APK
-          path: bin/*.apk
