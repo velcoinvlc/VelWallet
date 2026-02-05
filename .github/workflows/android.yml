@@ -19,11 +19,10 @@ jobs:
       - name: Build APK with Buildozer
         run: |
           docker run --rm \
-            -e BUILDOZER_ALLOW_ROOT=1 \
             -v $PWD:/home/user/hostcwd \
             --entrypoint "" \
             kivy/buildozer:latest \
-            sh -c "cd /home/user/hostcwd && buildozer android debug"
+            sh -c "BUILDOZER_ALLOW_ROOT=1 buildozer android debug"
 
       # 3️⃣ Subir APK generado como artifact
       - name: Upload APK
