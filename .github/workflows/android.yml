@@ -7,30 +7,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build-apk:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Clonar el repo
+      # 1️⃣ Clonar el repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Configurar cache para dependencias de Buildozer
-      - name: Cache pip and buildozer
-        uses: actions/cache@v3
+      # 2️⃣ Configurar Python (Buildozer requiere Python)
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          path: |
-            ~/.buildozer
-            ~/.local
-            ~/.cache/pip
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
+          python-version: '3.12'
 
-      # 3️⃣ Ejecutar Buildozer dentro del contenedor sin root
+      # 3️⃣ Ejecutar Buildozer en contenedor Docker (no root)
       - name: Build APK
         run: |
           docker run --rm -t \
+            -e P4A_NON_INTERACTIVE=1 \
             -v "${{ github.workspace }}:/home/builder/workspace" \
             -w /home/builder/workspace \
             kivy/buildozer:latest \
             buildozer android debug
+
+      # 4️⃣ Subir APK como artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VelWallet-APK
+          path: bin/*.apk
