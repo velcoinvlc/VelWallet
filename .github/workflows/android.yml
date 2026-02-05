@@ -9,14 +9,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      P4A_NON_INTERACTIVE: 1  # ⚡ evita la pregunta interactiva de root
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build APK with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        with:
-          command: buildozer android debug --verbose
+      - name: Build APK in Docker
+        run: |
+          docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          kivy/buildozer \
+          buildozer android debug --verbose
