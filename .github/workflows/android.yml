@@ -13,16 +13,16 @@ jobs:
     steps:
       # 1️⃣ Checkout del repositorio
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Actualizado a v4
 
-      # 2️⃣ Setup Docker Buildozer
-      - name: Build APK with Buildozer (auto-confirm root)
+      # 2 APK con Buildozer
+      - name: Build APK with Buildozer
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/hostworkspace \
-            -w /home/user/src \
+            -e BUILDOZER_ALLOW_ROOT=1 \
+            -v $PWD:/home/user/hostcwd \
             kivy/buildozer:latest \
-            /bin/bash -c "cp -r /hostworkspace/* . && yes | buildozer android debug"
+            buildozer android debug
 
       # 3️⃣ Subir APK generado como artifact
       - name: Upload APK
