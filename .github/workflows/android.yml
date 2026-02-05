@@ -15,27 +15,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Crear carpeta de salida para APK
-      - name: Create output folder
-        run: mkdir -p bin
-
-      # 3️⃣ Ejecutar Buildozer en contenedor
-      - name: Build APK with Buildozer
+      # 2️⃣ Setup Docker Buildozer
+      - name: Build APK with Buildozer (auto-confirm root)
         run: |
           docker run --rm \
             -v ${{ github.workspace }}:/hostworkspace \
             -w /home/user/src \
-            -e P4A_ALLOW_ROOT=1 \
             kivy/buildozer:latest \
-            /bin/bash -c "cp -r /hostworkspace/* . && buildozer android debug"
-      
-      # 4️⃣ Copiar APK generado al workspace
-      - name: Copy APK to output
-        run: cp /home/user/src/bin/*.apk ${{ github.workspace }}/bin/
+            /bin/bash -c "cp -r /hostworkspace/* . && yes | buildozer android debug"
 
-      # 5️⃣ Subir APK como artefacto
+      # 3️⃣ Subir APK generado como artifact
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: VelWallet-APK
-          path: bin/
+          path: bin/*.apk
