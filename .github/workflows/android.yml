@@ -9,26 +9,21 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-    env:
-      P4A_NON_INTERACTIVE: 1  # evita prompts interactivos
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Build APK with Buildozer
+      - name: Build APK with Buildozer (non-root)
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/github/workspace" \
-            -w /github/workspace \
-            -e P4A_NON_INTERACTIVE=1 \
-            kivy/buildozer:latest \
-            buildozer android debug --allow-root
-
+          # Creamos un usuario dentro del contenedor y ejecutamos Buildozer como ese usuario
+          docker run --rm -t \
+            -v "${{ github.workspace }}:/home/dev/workspace" \
+            -w /home/dev/workspace \
+            kivy/buildozer:latest bash -c "\
+              useradd -m dev && \
+              chown -R dev:dev /home/dev/workspace && \
+              su dev -c 'buildozer android debug'"
+            
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
