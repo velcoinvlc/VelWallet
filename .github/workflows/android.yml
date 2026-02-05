@@ -2,24 +2,21 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      P4A_NON_INTERACTIVE: 1  # ⚡ evita la pregunta interactiva de root
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        uses: docker://kivy/buildozer
+      - name: Build APK with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
         with:
-          args: buildozer android debug --allow-root
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: bin/*.apk
+          command: buildozer android debug --verbose
