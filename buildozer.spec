@@ -12,27 +12,32 @@ version = 1.0
 requirements = python3,kivy,ecdsa,requests,qrcode,pillow
 
 orientation = portrait
-
 fullscreen = 0
-
 log_level = 2
 
 
-# ---------- Android ----------
+# ---------- Android permissions ----------
 
 android.permissions = INTERNET
+
+
+# ---------- Android SDK / NDK ----------
 
 android.api = 31
 android.minapi = 21
 android.ndk_api = 21
-
 android.archs = arm64-v8a,armeabi-v7a
 
 android.debug_artifact = apk
-
 android.allow_backup = True
-
 android.accept_sdk_license = True
+
+
+# ---------- Packaging ----------
+
+# Rutas RELATIVAS — compatibles con Docker / GitHub Actions
+icon.filename = icon.png
+presplash.filename = presplash.png
 
 
 # ---------- Build behavior ----------
@@ -43,12 +48,6 @@ warn_on_root = 0
 # ---------- Python for Android ----------
 
 p4a.branch = master
-
-
-# ---------- Packaging ----------
-
-icon.filename = %(source.dir)s/icon.png
-presplash.filename = %(source.dir)s/presplash.png
 
 
 # ---------- Excludes ----------
