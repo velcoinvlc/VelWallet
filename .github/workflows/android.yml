@@ -13,23 +13,22 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Show repo files
+      - name: Show files
         run: ls -la
 
-      - name: Build APK with Buildozer (Docker)
+      - name: Build APK with Buildozer
         run: |
           docker run --rm \
-            -v ${{ github.workspace }}:/home/user/hostcwd \
-            -w /home/user/hostcwd \
+            --entrypoint bash \
+            -v ${{ github.workspace }}:/home/user/app \
+            -w /home/user/app \
             kivy/buildozer \
-            bash -c "yes | buildozer android debug"
+            -c "yes | buildozer android debug"
 
-      - name: List build outputs
-        run: |
-          ls -R
-          ls -R bin || true
+      - name: List bin folder
+        run: ls -R bin || true
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: velwallet-apk
