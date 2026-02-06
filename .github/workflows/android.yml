@@ -2,8 +2,7 @@ name: Build VelWallet APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -11,22 +10,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout del repositorio
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2️⃣ Build APK con Buildozer
-      - name: Build APK with Buildozer
+      - name: Show repo files
+        run: ls -la
+
+      - name: Build APK with Buildozer (Docker)
         run: |
           docker run --rm \
-            -v $PWD:/home/user/hostcwd \
-            --entrypoint "" \
-            kivy/buildozer:latest \
-            sh -c "BUILDOZER_ALLOW_ROOT=1 buildozer android debug"
+            -v ${{ github.workspace }}:/home/user/hostcwd \
+            -w /home/user/hostcwd \
+            kivy/buildozer \
+            bash -c "yes | buildozer android debug"
 
-      # 3️⃣ Subir APK generado como artifact
-      - name: Upload APK
+      - name: List build outputs
+        run: |
+          ls -R
+          ls -R bin || true
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VelWallet-APK
+          name: velwallet-apk
           path: bin/*.apk
