@@ -9,7 +9,7 @@ source.include_exts = py,png,jpg,kv,atlas,json
 
 version = 1.0
 
-requirements = python3,kivy,ecdsa,requests,qrcode,pillow
+requirements = python3,kivy,requests,urllib3,idna,certifi
 
 orientation = portrait
 fullscreen = 0
