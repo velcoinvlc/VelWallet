@@ -7,7 +7,7 @@ package.domain = velcoin.vlc
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 
-version = 1.0
+version = 2.0
 
 requirements = python3,kivy,requests,urllib3,idna,certifi
 
