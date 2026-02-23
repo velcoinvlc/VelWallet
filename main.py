@@ -23,7 +23,7 @@ from kivy.core.clipboard import Clipboard
 from kivy.factory import Factory
 
 # --- CONFIGURACIÓN DEL NODO ---
-NODE_URL = "https://velcoin.onrender.com"
+NODE_URL = "https://velcoin-vlc-l3uk.onrender.com"
 
 def sha256(msg):
     """Helper para SHA256"""
@@ -83,6 +83,7 @@ KV = """
             bold: True
             halign: 'left'
             text_size: self.size
+            font_size: '14sp'
         Label:
             id: addr_hist
             text: "Dirección..."
@@ -110,6 +111,8 @@ KV = """
             bold: True
             size_hint_y: None
             height: dp(40)
+            text_size: self.size
+            halign: 'center'
 
         # Tarjeta de Balance
         BoxLayout:
@@ -129,16 +132,22 @@ KV = """
                 text: "Balance disponible"
                 font_size: '13sp'
                 color: (1, 1, 1, 0.7)
+                text_size: self.size
+                halign: 'center'
             Label:
                 id: balance_main
                 text: "Cargando..."
-                font_size: '34sp'
+                font_size: '28sp'
                 bold: True
+                text_size: self.size
+                halign: 'center'
             Label:
                 id: wallet_addr_short
                 text: "0x000...000"
                 font_size: '10sp'
                 color: (1, 1, 1, 0.5)
+                text_size: self.size
+                halign: 'center'
 
         # Acciones Principales
         BoxLayout:
@@ -149,11 +158,17 @@ KV = """
                 text: "ENVIAR"
                 bold: True
                 background_color: (0.1, 0.12, 0.2, 1)
+                text_size: self.size
+                halign: 'center'
+                valign: 'middle'
                 on_release: root.abrir_dialogo_envio()
             Button:
                 text: "RECIBIR"
                 bold: True
                 background_color: (0.1, 0.12, 0.2, 1)
+                text_size: self.size
+                halign: 'center'
+                valign: 'middle'
                 on_release: root.mostrar_mi_direccion()
 
         # Historial
@@ -178,6 +193,7 @@ KV = """
                     bold: True
                     halign: 'left'
                     text_size: self.size
+                    valign: 'middle'
                 Button:
                     text: "REFRESCAR"
                     size_hint_x: None
@@ -185,7 +201,10 @@ KV = """
                     font_size: '10sp'
                     background_color: (0,0,0,0)
                     color: (0.1, 0.45, 1, 1)
-                    on_release: root.actualizar_todo()
+                    text_size: self.size
+                    halign: 'center'
+                    valign: 'middle'
+                    on_release: root.refrescar_y_minar()
 
             ScrollView:
                 BoxLayout:
@@ -201,6 +220,9 @@ KV = """
             height: dp(40)
             background_color: (0,0,0,0)
             color: (1, 0.3, 0.3, 0.7)
+            text_size: self.size
+            halign: 'center'
+            valign: 'middle'
             on_release: root.logout()
 
 <LoginScreen>:
@@ -229,6 +251,8 @@ KV = """
             bold: True
             size_hint_y: None
             height: dp(50)
+            text_size: self.size
+            halign: 'center'
 
         Widget:
             size_hint_y: None
@@ -239,6 +263,9 @@ KV = """
             size_hint_y: None
             height: dp(55)
             background_color: (0.1, 0.45, 1, 1)
+            text_size: self.size
+            halign: 'center'
+            valign: 'middle'
             on_release: root.show_import_dialog()
         
         Button:
@@ -246,14 +273,16 @@ KV = """
             size_hint_y: None
             height: dp(55)
             background_color: (0.1, 0.12, 0.2, 1)
+            text_size: self.size
+            halign: 'center'
+            valign: 'middle'
             on_release: root.create_new_wallet()
         Widget:
 """
 
 class MainScreen(Screen):
-    # Referencias a popups activos para poder cerrarlos
     popup_envio = None
-    popup_minando = None
+    popup_cargando = None
     
     def on_enter(self):
         self.actualizar_todo()
@@ -267,11 +296,9 @@ class MainScreen(Screen):
 
     def update_info(self, addr):
         try:
-            # 1. Balance
             r_bal = requests.get(f"{NODE_URL}/balance/{addr}", timeout=10).json()
             balance = r_bal.get('balance', 0)
 
-            # 2. Escaneo de /blocks para Historial con hash de transacción
             r_blocks = requests.get(f"{NODE_URL}/blocks", timeout=10).json()
             mis_txs = []
             for bloque in r_blocks:
@@ -279,7 +306,6 @@ class MainScreen(Screen):
                 block_hash = bloque.get('block_hash', '')
                 for tx in txs:
                     if tx.get('from') == addr or tx.get('to') == addr:
-                        # Crear hash único de transacción
                         tx_data = f"{tx.get('from')}{tx.get('to')}{tx.get('amount')}{tx.get('nonce')}"
                         tx_hash = sha256(tx_data)[:16]
                         mis_txs.append({
@@ -300,6 +326,7 @@ class MainScreen(Screen):
             Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "No se pudo conectar al nodo"))
 
     def refresh_ui(self, bal, history):
+        # Formatear balance con separadores de miles
         self.ids.balance_main.text = f"{bal:,.2f} VLC"
         self.ids.history_list.clear_widgets()
         store = JsonStore('vlc_secure.json')
@@ -308,30 +335,25 @@ class MainScreen(Screen):
         for tx in history:
             item = Factory.TransactionItem()
             es_envio = tx['remitente'] == my_addr
-            item.ids.tipo_monto.text = f"{'-' if es_envio else '+'} {tx['monto']} VLC"
+            monto_formateado = f"{float(tx['monto']):,.2f}"
+            item.ids.tipo_monto.text = f"{'-' if es_envio else '+'} {monto_formateado} VLC"
             item.ids.tipo_monto.color = (1, 0.4, 0.4, 1) if es_envio else (0.4, 1, 0.4, 1)
             item.ids.addr_hist.text = f"{'Para: ' if es_envio else 'De: '}{tx['destinatario' if es_envio else 'remitente'][:20]}..."
             
-            # Guardar datos de transacción en el item para el popup
             item.tx_data = tx
             item.es_envio = es_envio
             
-            # Hacer clickeable
             item.bind(on_touch_down=lambda inst, touch, t=tx, e=es_envio: self.mostrar_detalle_tx(t, e) if inst.collide_point(*touch.pos) else None)
             
             self.ids.history_list.add_widget(item)
 
     def mostrar_detalle_tx(self, tx, es_envio):
-        """Muestra popup con detalles de la transacción"""
         layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
         
-        # Tipo de transacción
         tipo = "ENVIADO" if es_envio else "RECIBIDO"
-        color = (1, 0.4, 0.4, 1) if es_envio else (0.4, 1, 0.4, 1)
         
-        contenido = f"""
-[b]Tipo:[/b] {tipo}
-[b]Monto:[/b] {tx['monto']} VLC
+        contenido = f"""[b]Tipo:[/b] {tipo}
+[b]Monto:[/b] {float(tx['monto']):,.2f} VLC
 
 [b]De:[/b]
 {tx['remitente']}
@@ -349,14 +371,13 @@ class MainScreen(Screen):
 [b]Timestamp:[/b] {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(tx['timestamp']))}
 
 [b]Firma:[/b]
-{tx['signature'][:40]}...
-        """.strip()
+{tx['signature'][:40]}..."""
         
         scroll = ScrollView(size_hint=(1, 1))
         label = Label(
             text=contenido,
             markup=True,
-            font_size='11sp',
+            font_size='12sp',
             halign='left',
             valign='top',
             size_hint_y=None,
@@ -394,7 +415,7 @@ class MainScreen(Screen):
         layout.add_widget(cant)
         layout.add_widget(btn)
         
-        self.popup_envio = Popup(title="Enviar VelCoin", content=layout, size_hint=(0.9, 0.4))
+        self.popup_envio = Popup(title="Enviar VelCoin", content=layout, size_hint=(0.9, None), height=dp(280))
 
         def confirmar(instance):
             store = JsonStore('vlc_secure.json').get('user')
@@ -413,7 +434,6 @@ class MainScreen(Screen):
                 self.mostrar_notificacion("Error", "Monto inválido")
                 return
             
-            # Generar nonce
             nonce = int(time.time() * 1000)
             
             firma = firmar_transaccion_nodo(
@@ -437,72 +457,162 @@ class MainScreen(Screen):
                 "signature": firma
             }
             
-            def enviar_y_minar():
+            def enviar_transaccion():
                 try:
-                    # Enviar transacción
                     r = requests.post(f"{NODE_URL}/send", json=payload, timeout=10)
                     respuesta = r.json()
                     
                     if respuesta.get('accepted'):
-                        # Mostrar popup de minando
-                        Clock.schedule_once(lambda dt: self.mostrar_popup_minando(), 0)
-                        
-                        # Minar automáticamente
-                        try:
-                            r_mine = requests.post(f"{NODE_URL}/mine", timeout=30)
-                            resultado_mine = r_mine.json()
-                            
-                            if "index" in resultado_mine:
-                                Clock.schedule_once(lambda dt: self.cerrar_minando_y_mostrar_exito("Transacción confirmada en bloque!"), 0)
-                            else:
-                                Clock.schedule_once(lambda dt: self.cerrar_minando_y_mostrar_exito("Transacción enviada (pendiente de confirmación)"), 0)
-                        except Exception as e:
-                            print(f"Error minando: {e}")
-                            Clock.schedule_once(lambda dt: self.cerrar_minando_y_mostrar_exito("Transacción enviada (minado pendiente)"), 0)
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_envio(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion("Éxito", "Transacción enviada. Presiona REFRESCAR para minar y confirmar."), 0)
                     else:
                         error = respuesta.get('error', 'Error desconocido')
                         Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Transacción rechazada: {error}"), 0)
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_envio(), 0)
                         
-                except Exception as e:
-                    print(f"Error: {e}")
-                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Fallo de conexión: {str(e)}"), 0)
-                
-                Clock.schedule_once(lambda dt: self.cerrar_popup_envio(), 0)
+                except Exception as err:
+                    print(f"Error: {err}")
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Fallo de conexión: {str(err)}"), 0)
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_envio(), 0)
             
-            threading.Thread(target=enviar_y_minar, daemon=True).start()
+            threading.Thread(target=enviar_transaccion, daemon=True).start()
 
         btn.bind(on_release=confirmar)
         self.popup_envio.open()
     
-    def mostrar_popup_minando(self):
-        """Muestra el popup de minando y lo guarda para cerrarlo después"""
-        content = BoxLayout(orientation='vertical', padding=dp(20))
-        content.add_widget(Label(text="Transacción aceptada. Minando bloque..."))
-        
-        self.popup_minando = Popup(
-            title="Minando",
-            content=content,
-            size_hint=(0.7, 0.3),
-            auto_dismiss=False
-        )
-        self.popup_minando.open()
-    
     def cerrar_popup_envio(self):
-        """Cierra el popup de envío si está abierto"""
         if self.popup_envio:
             self.popup_envio.dismiss()
             self.popup_envio = None
-    
-    def cerrar_minando_y_mostrar_exito(self, mensaje):
-        """Cierra el popup de minando y muestra el de éxito con botón OK"""
-        # Cerrar popup de minando
-        if self.popup_minando:
-            self.popup_minando.dismiss()
-            self.popup_minando = None
+
+    def refrescar_y_minar(self):
+        self.mostrar_popup_cargando("Verificando mempool...")
         
-        # Mostrar popup de éxito con OK
+        def verificar_y_minar():
+            try:
+                r_mempool = requests.get(f"{NODE_URL}/mempool", timeout=10)
+                mempool = r_mempool.json()
+                
+                if len(mempool) == 0:
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.actualizar_todo(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Info", "No hay transacciones pendientes"), 0)
+                    return
+                
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Minando bloque..."), 0)
+                
+                r_mine = requests.post(
+                    f"{NODE_URL}/mine", 
+                    json={},
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
+                
+                if r_mine.status_code == 200:
+                    resultado = r_mine.json()
+                    if resultado.get('success'):
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                        Clock.schedule_once(lambda dt: self.actualizar_todo(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion("Éxito", f"Bloque minado! #{resultado['block']['index']}"), 0)
+                    else:
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "El minado no tuvo éxito"), 0)
+                else:
+                    try:
+                        error_msg = r_mine.json().get('error', 'Error desconocido')
+                    except:
+                        error_msg = f"HTTP {r_mine.status_code}: {r_mine.text}"
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Error al minar: {error_msg}"), 0)
+                    
+            except Exception as err:
+                print(f"Error en verificar_y_minar: {err}")
+                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Error de conexión: {str(err)}"), 0)
+        
+        threading.Thread(target=verificar_y_minar, daemon=True).start()
+
+    def mostrar_popup_cargando(self, mensaje="Cargando..."):
+        self.cerrar_popup_cargando()
+        
+        content = BoxLayout(orientation='vertical', padding=dp(20))
+        label = Label(
+            text=mensaje,
+            font_size='14sp',
+            halign='center',
+            valign='middle',
+            text_size=(self.width * 0.6, None)
+        )
+        label.bind(texture_size=lambda inst, size: setattr(inst, 'height', size[1]))
+        content.add_widget(label)
+        
+        self.popup_cargando = Popup(
+            title="Procesando",
+            content=content,
+            size_hint=(0.8, None),
+            height=dp(180),
+            auto_dismiss=False
+        )
+        self.popup_cargando.open()
+    
+    def cerrar_popup_cargando(self):
+        if self.popup_cargando:
+            self.popup_cargando.dismiss()
+            self.popup_cargando = None
+
+    def mostrar_mi_direccion(self):
+        addr = JsonStore('vlc_secure.json').get('user')['address']
         layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
-        layout.add_widget(Label(text=mensaje))
+        
+        # TextInput que se ajusta y permite copiar
+        txt = TextInput(
+            text=addr,
+            readonly=True,
+            size_hint_y=None,
+            height=dp(50),
+            font_size='12sp',
+            halign='center'
+        )
+        layout.add_widget(txt)
+        
+        btn = Button(
+            text="COPIAR AL PORTAPAPELES",
+            background_color=(0.1, 0.8, 0.3, 1),
+            size_hint_y=None,
+            height=dp(50),
+            text_size=(self.width * 0.7, None),
+            halign='center',
+            valign='middle'
+        )
+        layout.add_widget(btn)
+        
+        pop = Popup(
+            title="Tu Dirección",
+            content=layout,
+            size_hint=(0.9, None),
+            height=dp(250)
+        )
+        btn.bind(on_release=lambda x: [Clipboard.copy(addr), pop.dismiss()])
+        pop.open()
+
+    def mostrar_notificacion(self, titulo, mensaje):
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+        
+        # Label con ajuste automático de texto
+        label = Label(
+            text=mensaje,
+            font_size='14sp',
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            text_size=(self.width * 0.65, None),
+            markup=True
+        )
+        label.bind(texture_size=lambda inst, size: setattr(inst, 'height', size[1]))
+        
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        scroll.add_widget(label)
+        layout.add_widget(scroll)
         
         btn_ok = Button(
             text="OK",
@@ -512,33 +622,16 @@ class MainScreen(Screen):
         )
         layout.add_widget(btn_ok)
         
+        # Calcular altura del popup basada en el contenido
         pop = Popup(
-            title="Éxito",
+            title=titulo,
             content=layout,
-            size_hint=(0.7, 0.35),
+            size_hint=(0.85, None),
+            height=dp(280),
             auto_dismiss=False
         )
         
-        def cerrar_todo_y_refrescar(instance):
-            pop.dismiss()
-            self.actualizar_todo()
-        
-        btn_ok.bind(on_release=cerrar_todo_y_refrescar)
-        pop.open()
-
-    def mostrar_mi_direccion(self):
-        addr = JsonStore('vlc_secure.json').get('user')['address']
-        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
-        layout.add_widget(TextInput(text=addr, readonly=True, size_hint_y=None, height=dp(50)))
-        btn = Button(text="COPIAR AL PORTAPAPELES", background_color=(0.1, 0.8, 0.3, 1), size_hint_y=None, height=dp(50))
-        layout.add_widget(btn)
-        
-        pop = Popup(title="Tu Dirección", content=layout, size_hint=(0.9, 0.4))
-        btn.bind(on_release=lambda x: [Clipboard.copy(addr), pop.dismiss()])
-        pop.open()
-
-    def mostrar_notificacion(self, titulo, mensaje):
-        pop = Popup(title=titulo, content=Label(text=mensaje), size_hint=(0.7, 0.3))
+        btn_ok.bind(on_release=pop.dismiss)
         pop.open()
 
     def logout(self):
@@ -551,22 +644,70 @@ class LoginScreen(Screen):
         addr, pub, priv_norm = derivar_wallet_oficial(new_priv)
         
         content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
-        content.add_widget(Label(text="GUARDA ESTA CLAVE (NO LA PIERDAS):", color=(1,0.8,0,1)))
-        content.add_widget(TextInput(text=new_priv, readonly=True, size_hint_y=None, height=dp(70)))
         
-        # Botón para copiar clave privada
-        btn_copiar = Button(text="COPIAR CLAVE AL PORTAPAPELES", size_hint_y=None, height=dp(45), background_color=(0.1, 0.8, 0.3, 1))
+        # Título con ajuste
+        lbl_titulo = Label(
+            text="GUARDA ESTA CLAVE (NO LA PIERDAS):",
+            color=(1,0.8,0,1),
+            font_size='14sp',
+            halign='center',
+            text_size=(self.width * 0.7, None),
+            size_hint_y=None
+        )
+        lbl_titulo.bind(texture_size=lambda inst, size: setattr(inst, 'height', size[1]))
+        content.add_widget(lbl_titulo)
+        
+        # Campo de texto para la clave
+        txt_priv = TextInput(
+            text=new_priv,
+            readonly=True,
+            size_hint_y=None,
+            height=dp(70),
+            font_size='11sp',
+            halign='center'
+        )
+        content.add_widget(txt_priv)
+        
+        # Botón copiar
+        btn_copiar = Button(
+            text="COPIAR CLAVE AL PORTAPAPELES",
+            size_hint_y=None,
+            height=dp(45),
+            background_color=(0.1, 0.8, 0.3, 1),
+            text_size=(self.width * 0.7, None),
+            halign='center',
+            valign='middle'
+        )
         content.add_widget(btn_copiar)
         
-        btn = Button(text="LA HE GUARDADO", size_hint_y=None, height=dp(50), background_color=(0,1,0.4,1))
+        # Botón confirmar
+        btn = Button(
+            text="LA HE GUARDADO",
+            size_hint_y=None,
+            height=dp(50),
+            background_color=(0,1,0.4,1),
+            text_size=(self.width * 0.7, None),
+            halign='center',
+            valign='middle'
+        )
         content.add_widget(btn)
-        pop = Popup(title="Nueva Wallet", content=content, size_hint=(0.9, 0.55), auto_dismiss=False)
         
-        # Función para copiar la clave
+        pop = Popup(
+            title="Nueva Wallet",
+            content=content,
+            size_hint=(0.9, None),
+            height=dp(380),
+            auto_dismiss=False
+        )
+        
         def copiar_clave(instance):
             Clipboard.copy(new_priv)
-            # Mostrar notificación temporal
-            notif = Popup(title="Copiado", content=Label(text="Clave copiada al portapapeles"), size_hint=(0.6, 0.2))
+            notif = Popup(
+                title="Copiado",
+                content=Label(text="Clave copiada al portapapeles"),
+                size_hint=(0.6, None),
+                height=dp(150)
+            )
             notif.open()
             Clock.schedule_once(lambda dt: notif.dismiss(), 1.5)
         
@@ -581,11 +722,33 @@ class LoginScreen(Screen):
 
     def show_import_dialog(self):
         box = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
-        inp = TextInput(hint_text="Clave Privada Hex (64 caracteres)", password=True, multiline=False, size_hint_y=None, height=dp(50))
-        btn = Button(text="IMPORTAR", background_color=(0.1, 0.45, 1, 1), size_hint_y=None, height=dp(50))
+        
+        inp = TextInput(
+            hint_text="Clave Privada Hex (64 caracteres)",
+            password=True,
+            multiline=False,
+            size_hint_y=None,
+            height=dp(50),
+            font_size='12sp',
+            halign='center'
+        )
+        
+        btn = Button(
+            text="IMPORTAR",
+            background_color=(0.1, 0.45, 1, 1),
+            size_hint_y=None,
+            height=dp(50)
+        )
+        
         box.add_widget(inp)
         box.add_widget(btn)
-        pop = Popup(title="Importar", content=box, size_hint=(0.9, 0.4))
+        
+        pop = Popup(
+            title="Importar",
+            content=box,
+            size_hint=(0.9, None),
+            height=dp(250)
+        )
 
         def do_import(instance):
             priv = inp.text.strip()
@@ -607,7 +770,40 @@ class LoginScreen(Screen):
         pop.open()
     
     def mostrar_notificacion(self, titulo, mensaje):
-        pop = Popup(title=titulo, content=Label(text=mensaje), size_hint=(0.7, 0.3))
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
+        
+        label = Label(
+            text=mensaje,
+            font_size='14sp',
+            halign='center',
+            valign='middle',
+            size_hint_y=None,
+            text_size=(self.width * 0.65, None),
+            markup=True
+        )
+        label.bind(texture_size=lambda inst, size: setattr(inst, 'height', size[1]))
+        
+        scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        scroll.add_widget(label)
+        layout.add_widget(scroll)
+        
+        btn_ok = Button(
+            text="OK",
+            size_hint_y=None,
+            height=dp(45),
+            background_color=(0.1, 0.45, 1, 1)
+        )
+        layout.add_widget(btn_ok)
+        
+        pop = Popup(
+            title=titulo,
+            content=layout,
+            size_hint=(0.85, None),
+            height=dp(280),
+            auto_dismiss=False
+        )
+        
+        btn_ok.bind(on_release=pop.dismiss)
         pop.open()
 
 class VelCoinApp(App):
