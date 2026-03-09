@@ -5,6 +5,7 @@ import threading
 import secrets
 import json
 import time
+import webbrowser
 
 from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager, Screen, FadeTransition
@@ -26,7 +27,6 @@ from kivy.animation import Animation
 from kivy.uix.modalview import ModalView
 from kivy.graphics import Color, Rectangle
 from kivy.storage.jsonstore import JsonStore
-from kivy.utils import platform  # <-- AÑADIDO PARA DETECTAR ANDROID
 
 # --- CONFIGURACIÓN ---
 NODE_URL = "https://velcoin-vlc-l3uk.onrender.com"
@@ -274,7 +274,7 @@ KV = """
         spacing: dp(10)
         Button:
             id: btn_download
-            text: "DESCARGAR PDF"
+            text: "DESCARGAR"
             background_color: (0.2, 0.8, 0.4, 1)
             font_size: '12sp'
         Button:
@@ -1222,92 +1222,45 @@ class MainScreen(Screen):
             self.purchases_list.height += dp(110)
     
     def descargar_producto(self, product_id):
+        """
+        SOLUCIÓN: Genera una URL de descarga con token temporal firmado.
+        El servidor debe modificar su endpoint /download para aceptar estos parámetros.
+        """
         store = JsonStore('vlc_secure.json')
         user_data = store.get('user')
         my_addr = user_data['address']
         pub_key = user_data['pub']
         
-        self.mostrar_popup_cargando("Descargando archivo...")
+        # Generar token temporal (válido por 30 minutos)
+        expira_en = 30 * 60  # 30 minutos en segundos
+        timestamp_expiracion = int(time.time()) + expira_en
         
-        # Aquí sigue la lógica de descarga
-        def auth_and_download():
-            if not autenticar_en_marketplace(my_addr, pub_key):
-                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-                Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "Autenticación fallida"), 0)
-                return
-
-            try:
-                r_download = marketplace_session.get(
-                    f"{MARKETPLACE_URL}/download/{product_id}",
-                    timeout=30
-                )
-
-                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-
-                if r_download.status_code == 200:
-
-                    # Determinar extensión por Content-Type
-                    content_type = r_download.headers.get('Content-Type', '').lower()
-
-                    if 'pdf' in content_type:
-                        ext = 'pdf'
-                    elif 'zip' in content_type:
-                        ext = 'zip'
-                    elif 'mp4' in content_type:
-                        ext = 'mp4'
-                    elif 'mpeg' in content_type:
-                        ext = 'mp3'
-                    elif 'image/jpeg' in content_type:
-                        ext = 'jpg'
-                    elif 'image/png' in content_type:
-                        ext = 'png'
-                    else:
-                        ext = 'bin'
-
-                    from os.path import expanduser, join
-                    import platform as sys_platform
-
-                    sistema = sys_platform.system()
-
-                    if sistema == "Android":
-                        download_dir = "/sdcard/Download"
-                    elif sistema == "Windows":
-                        download_dir = join(expanduser("~"), "Downloads")
-                    else:
-                        download_dir = join(expanduser("~"), "Downloads")
-
-                    os.makedirs(download_dir, exist_ok=True)
-
-                    filename = f"VelCoin_{product_id[:8]}.{ext}"
-                    filepath = join(download_dir, filename)
-
-                    with open(filepath, 'wb') as f:
-                        f.write(r_download.content)
-
-                    Clock.schedule_once(
-                        lambda dt: self.mostrar_notificacion(
-                            "Éxito",
-                            f"Archivo descargado en:\n{filepath}"
-                        ),
-                        0
-                    )
-                else:
-                    error_data = r_download.json() if r_download.content else {}
-                    error = error_data.get('error', 'Error desconocido')
-                    Clock.schedule_once(
-                        lambda dt: self.mostrar_notificacion("Error", f"No se pudo descargar: {error}"),
-                        0
-                    )
-
-            except Exception as e:
-                print(f"Error descargando: {e}")
-                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-                Clock.schedule_once(
-                    lambda dt: self.mostrar_notificacion("Error", f"Error de descarga: {str(e)}"),
-                    0
-                )
-
-        threading.Thread(target=auth_and_download, daemon=True).start()
+        # Crear firma de autorización usando pub_key (NO priv_key)
+        # wallet + product_id + expiración
+        mensaje = f"{my_addr}:{product_id}:{timestamp_expiracion}"
+        firma = sha256(sha256(pub_key) + mensaje)
+        
+        # Construir URL con parámetros de autenticación
+        from urllib.parse import urlencode
+        params = {
+            'wallet': my_addr,
+            'pubkey': pub_key,
+            'expires': timestamp_expiracion,
+            'signature': firma
+        }
+        query_string = urlencode(params)
+        download_url = f"{MARKETPLACE_URL}/download/{product_id}?{query_string}"
+        
+        print(f"Abriendo navegador con URL: {download_url[:100]}...")
+        
+        # Abrir navegador
+        webbrowser.open(download_url)
+        
+        # Notificar al usuario
+        self.mostrar_notificacion(
+            "Descarga Iniciada",
+            "Se abrió tu navegador para descargar el archivo.\n\nEl enlace es válido por 30 minutos."
+        )
     
     def mostrar_detalle_compra(self, compra):
         layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(15))
@@ -1619,16 +1572,6 @@ class LoginScreen(Screen):
 
 
 class VelCoinApp(App):
-    def on_start(self):
-        # === AÑADIDO PARA SOLICITAR PERMISOS EN ANDROID ===
-        if platform == 'android':
-            from android.permissions import request_permissions, Permission
-            request_permissions([
-                Permission.READ_EXTERNAL_STORAGE, 
-                Permission.WRITE_EXTERNAL_STORAGE
-            ])
-        # ===================================================
-
     def build(self):
         Builder.load_string(KV)
         sm = ScreenManager(transition=FadeTransition())
