@@ -7,7 +7,7 @@ package.domain = velcoin.vlc
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 
-version = 2.0
+version = 3.0
 
 requirements = python3,kivy,requests,urllib3,idna,certifi
 
@@ -23,7 +23,8 @@ android.permissions = INTERNET
 
 # ---------- Android SDK / NDK ----------
 
-android.api = 31
+android.api = 34
+android.sdk_version = 34
 android.minapi = 21
 android.ndk_api = 21
 android.archs = arm64-v8a,armeabi-v7a
