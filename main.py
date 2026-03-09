@@ -26,6 +26,7 @@ from kivy.animation import Animation
 from kivy.uix.modalview import ModalView
 from kivy.graphics import Color, Rectangle
 from kivy.storage.jsonstore import JsonStore
+from kivy.utils import platform  # <-- AÑADIDO PARA DETECTAR ANDROID
 
 # --- CONFIGURACIÓN ---
 NODE_URL = "https://velcoin-vlc-l3uk.onrender.com"
@@ -1264,9 +1265,9 @@ class MainScreen(Screen):
                         ext = 'bin'
 
                     from os.path import expanduser, join
-                    import platform
+                    import platform as sys_platform
 
-                    sistema = platform.system()
+                    sistema = sys_platform.system()
 
                     if sistema == "Android":
                         download_dir = "/sdcard/Download"
@@ -1618,6 +1619,16 @@ class LoginScreen(Screen):
 
 
 class VelCoinApp(App):
+    def on_start(self):
+        # === AÑADIDO PARA SOLICITAR PERMISOS EN ANDROID ===
+        if platform == 'android':
+            from android.permissions import request_permissions, Permission
+            request_permissions([
+                Permission.READ_EXTERNAL_STORAGE, 
+                Permission.WRITE_EXTERNAL_STORAGE
+            ])
+        # ===================================================
+
     def build(self):
         Builder.load_string(KV)
         sm = ScreenManager(transition=FadeTransition())
