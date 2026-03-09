@@ -18,8 +18,8 @@ log_level = 2
 
 # ---------- Android permissions ----------
 
-android.permissions = INTERNET
-
+android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
+android.request_legacy_external_storage = True
 
 # ---------- Android SDK / NDK ----------
 
