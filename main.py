@@ -996,38 +996,164 @@ class MainScreen(Screen):
         btn_confirmar.bind(on_release=confirmar_compra)
         pop.open()
     
+    # ==================== CORRECCIÓN CRÍTICA AQUÍ ====================
     def procesar_compra(self, product_id, precio, producto_info=None):
+        """
+        CORREGIDO: Verifica en el blockchain si ya existe un pago para este producto
+        ANTES de enviar dinero. Usa el endpoint /check_purchase del marketplace.
+        """
         store = JsonStore('vlc_secure.json').get('user')
         my_addr = store['address']
         pub_key = store['pub']
         
-        try:
-            r_bal = requests.get(f"{NODE_URL}/balance/{my_addr}", timeout=10).json()
-            balance = r_bal.get('balance', 0)
-            
-            if balance < precio:
-                self.mostrar_notificacion("Error", f"Balance insuficiente. Tienes {balance} VLC, necesitas {precio} VLC")
-                return
-            
-            nonce = int(time.time() * 1000)
-            firma = firmar_transaccion_nodo(pub_key, my_addr, WALLET_FUNDADORA, precio, nonce)
-            
-            if not firma:
-                self.mostrar_notificacion("Error", "No se pudo firmar la transacción")
-                return
-            
-            payload_tx = {
-                "from": my_addr,
-                "to": WALLET_FUNDADORA,
-                "amount": precio,
-                "nonce": nonce,
-                "public_key": pub_key,
-                "signature": firma
-            }
-            
-            self.mostrar_popup_cargando("Procesando pago...")
-            
-            def enviar_y_comprar():
+        # ========== PASO 1: AUTENTICACIÓN ==========
+        self.mostrar_popup_cargando("Verificando...")
+        
+        def proceso_completo():
+            try:
+                # Verificar autenticación
+                if not autenticar_en_marketplace(my_addr, pub_key):
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "Autenticación fallida"), 0)
+                    return
+                
+                # ========== PASO 2: VERIFICAR SI YA COMPRÓ ESTE PRODUCTO ==========
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Verificando compras..."), 0)
+                
+                try:
+                    # Usar el endpoint /check_purchase del marketplace
+                    r_check = marketplace_session.get(
+                        f"{MARKETPLACE_URL}/check_purchase/{product_id}",
+                        timeout=10
+                    )
+                    
+                    if r_check.status_code == 200:
+                        resultado = r_check.json()
+                        if resultado.get('purchased'):
+                            Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                            Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                                "Info", 
+                                "Ya tienes este producto. Ve a 'Mis Compras' para descargarlo."
+                            ), 0)
+                            return
+                    
+                    # Si el endpoint no existe o falla, verificar en el blockchain localmente
+                    # Buscar transacciones anteriores a WALLET_FUNDADORA con el mismo monto
+                    try:
+                        r_blocks = requests.get(f"{NODE_URL}/blocks", timeout=10).json()
+                        for bloque in r_blocks:
+                            for tx in bloque.get('transactions', []):
+                                # Si ya envió dinero a la wallet fundadora con el mismo monto
+                                if (tx.get('from') == my_addr and 
+                                    tx.get('to') == WALLET_FUNDADORA and
+                                    abs(float(tx.get('amount', 0)) - precio) < 0.01):
+                                    
+                                    # Verificar si es para este producto consultando si puede descargar
+                                    try:
+                                        r_download_check = marketplace_session.get(
+                                            f"{MARKETPLACE_URL}/download/{product_id}",
+                                            timeout=5
+                                        )
+                                        if r_download_check.status_code == 200:
+                                            Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                                            Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                                                "Info", 
+                                                "Ya tienes este producto. Ve a 'Mis Compras' para descargarlo."
+                                            ), 0)
+                                            return
+                                    except:
+                                        pass
+                    except Exception as e:
+                        print(f"Error verificando blockchain: {e}")
+                        # Continuar de todas formas, el /buy fallará si ya existe
+                        
+                except Exception as e:
+                    print(f"Error verificando compra previa: {e}")
+                    # Continuar, el /buy del marketplace tiene su propia validación
+                
+                # ========== PASO 3: INTENTAR REGISTRAR COMPRA EN MARKETPLACE PRIMERO ==========
+                # Esto es la clave: el marketplace tiene una transacción atómica
+                # Si falla aquí, NO se ha enviado dinero todavía
+                
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Reservando producto..."), 0)
+                
+                try:
+                    # Intentar crear la compra en el marketplace SIN enviar pago aún
+                    # El endpoint /buy del marketplace verifica si ya existe y crea el registro
+                    r_reserve = marketplace_session.post(
+                        f"{MARKETPLACE_URL}/buy",
+                        json={"product_id": product_id},
+                        timeout=10
+                    )
+                    
+                    if r_reserve.status_code == 400 and 'already purchased' in r_reserve.text.lower():
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                            "Info", 
+                            "Ya tienes este producto. Ve a 'Mis Compras' para descargarlo."
+                        ), 0)
+                        return
+                    
+                    if r_reserve.status_code != 200:
+                        error = r_reserve.json().get('error', 'Error desconocido')
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                            "Error", 
+                            f"No se pudo reservar el producto: {error}"
+                        ), 0)
+                        return
+                    
+                    # La compra se reservó exitosamente en el marketplace
+                    # Ahora SÍ enviamos el pago
+                    tx_hash_reservado = r_reserve.json().get('tx_hash')
+                    
+                except Exception as e:
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                        "Error", 
+                        f"Error conectando con marketplace: {str(e)}"
+                    ), 0)
+                    return
+                
+                # ========== PASO 4: VERIFICAR BALANCE ==========
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Verificando balance..."), 0)
+                
+                try:
+                    r_bal = requests.get(f"{NODE_URL}/balance/{my_addr}", timeout=10).json()
+                    balance = r_bal.get('balance', 0)
+                    
+                    if balance < precio:
+                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                        Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                            "Error", 
+                            f"Balance insuficiente. Tienes {balance} VLC, necesitas {precio} VLC"
+                        ), 0)
+                        return
+                except Exception as e:
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"No se pudo verificar balance: {str(e)}"), 0)
+                    return
+                
+                # ========== PASO 5: PREPARAR Y ENVIAR TRANSACCIÓN ==========
+                nonce = int(time.time() * 1000)
+                firma = firmar_transaccion_nodo(pub_key, my_addr, WALLET_FUNDADORA, precio, nonce)
+                
+                if not firma:
+                    Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "No se pudo firmar la transacción"), 0)
+                    return
+                
+                payload_tx = {
+                    "from": my_addr,
+                    "to": WALLET_FUNDADORA,
+                    "amount": precio,
+                    "nonce": nonce,
+                    "public_key": pub_key,
+                    "signature": firma
+                }
+                
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Enviando pago..."), 0)
+                
                 try:
                     r_send = requests.post(f"{NODE_URL}/send", json=payload_tx, timeout=10)
                     resp_send = r_send.json()
@@ -1038,57 +1164,50 @@ class MainScreen(Screen):
                         Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Pago rechazado: {error}"), 0)
                         return
                     
-                    Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Confirmando transacción..."), 0)
-                    requests.post(f"{NODE_URL}/mine", json={}, timeout=30)
+                    tx_hash = resp_send.get('tx_hash') or calcular_tx_hash_completo(payload_tx)
                     
-                    Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Registrando compra..."), 0)
-                    
-                    if autenticar_en_marketplace(my_addr, pub_key):
-                        r_buy = marketplace_session.post(
-                            f"{MARKETPLACE_URL}/buy",
-                            json={"product_id": product_id},
-                            timeout=10
-                        )
-                        
-                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-                        
-                        if r_buy.status_code == 200:
-                            # Guardar en caché local la compra
-                            if producto_info:
-                                compra_data = {
-                                    'product_id': product_id,
-                                    'title': producto_info.get('title', 'Producto'),
-                                    'price': precio,
-                                    'status': 'completed',
-                                    'timestamp': int(time.time())
-                                }
-                                # Evitar duplicados
-                                existe = False
-                                for c in self.mis_compras_cache:
-                                    if c['product_id'] == product_id:
-                                        existe = True
-                                        break
-                                if not existe:
-                                    self.mis_compras_cache.append(compra_data)
-                            
-                            Clock.schedule_once(lambda dt: self.mostrar_notificacion("Éxito", "¡Compra exitosa! Ve a 'Mis Compras' para descargar."), 0)
-                            Clock.schedule_once(lambda dt: self.actualizar_todo(), 0)
-                        else:
-                            error = r_buy.json().get('error', 'Error desconocido')
-                            Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Compra fallida: {error}"), 0)
-                    else:
-                        Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-                        Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", "Autenticación fallida"), 0)
-                        
                 except Exception as e:
-                    print(f"Error en compra: {e}")
                     Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
-                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Error: {str(e)}"), 0)
-            
-            threading.Thread(target=enviar_y_comprar, daemon=True).start()
-            
-        except Exception as e:
-            self.mostrar_notificacion("Error", f"No se pudo verificar balance: {str(e)}")
+                    Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Error enviando pago: {str(e)}"), 0)
+                    return
+                
+                # ========== PASO 6: MINAR BLOQUE ==========
+                Clock.schedule_once(lambda dt: self.mostrar_popup_cargando("Confirmando transacción..."), 0)
+                
+                try:
+                    requests.post(f"{NODE_URL}/mine", json={}, timeout=30)
+                except Exception as e:
+                    print(f"Error minando (continuando): {e}")
+                
+                # ========== PASO 7: ÉXITO ==========
+                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                
+                # Guardar en caché local
+                if producto_info:
+                    compra_data = {
+                        'product_id': product_id,
+                        'title': producto_info.get('title', 'Producto'),
+                        'price': precio,
+                        'status': 'completed',
+                        'timestamp': int(time.time()),
+                        'tx_hash': tx_hash
+                    }
+                    existe = any(c['product_id'] == product_id for c in self.mis_compras_cache)
+                    if not existe:
+                        self.mis_compras_cache.append(compra_data)
+                
+                Clock.schedule_once(lambda dt: self.mostrar_notificacion(
+                    "Éxito", 
+                    "¡Compra exitosa! Ve a 'Mis Compras' para descargar."
+                ), 0)
+                Clock.schedule_once(lambda dt: self.actualizar_todo(), 0)
+                    
+            except Exception as e:
+                print(f"Error general en proceso_compra: {e}")
+                Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                Clock.schedule_once(lambda dt: self.mostrar_notificacion("Error", f"Error inesperado: {str(e)}"), 0)
+        
+        threading.Thread(target=proceso_completo, daemon=True).start()
 
     # ==================== MIS COMPRAS ====================
     
