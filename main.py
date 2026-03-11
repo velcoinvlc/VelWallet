@@ -73,35 +73,56 @@ def firmar_challenge(public_key, challenge):
         return None
 
 # === NUEVAS FUNCIONES PARA HASH DE TRANSACCIONES ===
+
 def calcular_tx_hash_completo(tx):
     """
-    Calcula el hash exacto como lo hace el nodo.
-    El nodo calcula el hash ANTES de añadir el campo 'hash'.
+    Calcula el hash canónico EXACTO como el nodo.
+    IMPORTANTE: El nodo excluye el campo 'hash' al calcular.
     """
     try:
-        # Crear copia EXACTA de los campos que usa el nodo para el hash
-        tx_para_hash = {
-            'amount': float(tx.get('amount', 0)),
-            'from': str(tx.get('from', '')),
-            'nonce': int(tx.get('nonce', 0)),
-            'public_key': str(tx.get('public_key', '')),
-            'signature': str(tx.get('signature', '')),
-            'timestamp': int(tx.get('timestamp', 0)) if tx.get('timestamp') else 0,
-            'to': str(tx.get('to', ''))
-        }
+        # EXCLUIR siempre el campo 'hash' (igual que el nodo)
+        tx_limpio = {}
         
-        # JSON compacto igual que el nodo
-        tx_json = json.dumps(tx_para_hash, sort_keys=True, separators=(',', ':'))
+        for campo in sorted(tx.keys()):
+            if campo == 'hash':
+                continue
+            
+            valor = tx[campo]
+            
+            # Normalizar tipos exactamente como el nodo
+            if campo == 'amount':
+                tx_limpio[campo] = float(valor)
+            elif campo in ['nonce', 'timestamp', 'received_at']:
+                tx_limpio[campo] = int(valor) if valor else 0
+            else:
+                tx_limpio[campo] = str(valor) if valor else ""
         
-        return sha256(tx_json)
+        # JSON con separadores EXACTOS de Python por defecto
+        json_str = json.dumps(tx_limpio, sort_keys=True, separators=(', ', ': '))
+        return sha256(json_str)
         
     except Exception as e:
         print(f"Error calculando hash: {e}")
         return tx.get('hash', 'ERROR')
-
+        
 def calcular_tx_hash_corto(tx_hash_completo):
     """Versión corta para mostrar (primeros 16 caracteres)"""
     return tx_hash_completo[:16] if tx_hash_completo else 'N/A'
+
+
+def consultar_tx_en_nodo(tx_hash):
+    """
+    Consulta una transacción específica al nodo para obtener datos oficiales.
+    """
+    try:
+        url = f"{NODE_URL}/tx/{tx_hash}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception as e:
+        print(f"Error consultando TX al nodo: {e}")
+        return None
 
 
 # === FIN NUEVAS FUNCIONES ===
@@ -643,8 +664,11 @@ class MainScreen(Screen):
                 
                 for tx in txs:
                     if tx.get('from') == addr or tx.get('to') == addr:
-                        # Calcular hash EXACTO como el nodo
-                        tx_hash_completo = calcular_tx_hash_completo(tx)
+                        # Usar hash del nodo si está disponible, sino calcular
+                        tx_hash_nodo = tx.get('hash')
+                        if not tx_hash_nodo:
+                            tx_sin_hash = {k: v for k, v in tx.items() if k != 'hash'}
+                            tx_hash_nodo = calcular_tx_hash_completo(tx_sin_hash)
                         
                         mis_txs.append({
                             "remitente": tx.get('from'),
@@ -656,8 +680,8 @@ class MainScreen(Screen):
                             "timestamp": timestamp,
                             "block_index": block_index,
                             "block_hash": block_hash,
-                            "tx_hash_completo": tx_hash_completo,
-                            "tx_hash_corto": calcular_tx_hash_corto(tx_hash_completo)
+                            "tx_hash_completo": tx_hash_nodo,
+                            "tx_hash_corto": calcular_tx_hash_corto(tx_hash_nodo)
                         })
             
             # También buscar en mempool
@@ -665,7 +689,11 @@ class MainScreen(Screen):
                 r_mempool = requests.get(f"{NODE_URL}/mempool", timeout=10).json()
                 for tx in r_mempool:
                     if tx.get('from') == addr or tx.get('to') == addr:
-                        tx_hash_completo = tx.get('hash') or calcular_tx_hash_completo(tx)
+                        tx_hash_nodo = tx.get('hash')
+                        if not tx_hash_nodo:
+                            tx_sin_hash = {k: v for k, v in tx.items() if k != 'hash'}
+                            tx_hash_nodo = calcular_tx_hash_completo(tx_sin_hash)
+                        
                         mis_txs.append({
                             "remitente": tx.get('from'),
                             "destinatario": tx.get('to'),
@@ -676,8 +704,8 @@ class MainScreen(Screen):
                             "timestamp": tx.get('timestamp', int(time.time())),
                             "block_index": None,
                             "block_hash": None,
-                            "tx_hash_completo": tx_hash_completo,
-                            "tx_hash_corto": calcular_tx_hash_corto(tx_hash_completo),
+                            "tx_hash_completo": tx_hash_nodo,
+                            "tx_hash_corto": calcular_tx_hash_corto(tx_hash_nodo),
                             "status": "pending"
                         })
             except Exception as e:
@@ -717,39 +745,88 @@ class MainScreen(Screen):
             
             self.ids.history_list.add_widget(item)
 
-    # === FUNCIÓN MODIFICADA ===
+    # === FUNCIÓN MODIFICADA - CONSULTA AL NODO ===
     def mostrar_detalle_tx(self, tx, es_envio):
         from datetime import datetime
         import webbrowser
         
-        layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
-        tipo = "ENVIADO" if es_envio else "RECIBIDO"
-        estado = "⏳ PENDIENTE" if tx.get('status') == 'pending' or tx.get('block_index') is None else "✅ CONFIRMADO"
+        # Obtener hash de la transacción
+        tx_hash_completo = tx.get('tx_hash_completo') or tx.get('tx_hash')
         
+        # PRIMERO: Intentar consultar al nodo para datos oficiales
+        datos_nodo = None
+        if tx_hash_completo:
+            datos_nodo = consultar_tx_en_nodo(tx_hash_completo)
+        
+        # USAR datos del nodo si están disponibles, sino usar datos locales
+        if datos_nodo:
+            # Usar datos oficiales del nodo
+            tx_hash_mostrar = datos_nodo.get('tx_hash', tx_hash_completo)
+            tx_from = datos_nodo.get('from', tx.get('remitente', 'N/A'))
+            tx_to = datos_nodo.get('to', tx.get('destinatario', 'N/A'))
+            tx_amount = datos_nodo.get('amount', tx.get('monto', 0))
+            tx_nonce = datos_nodo.get('nonce', tx.get('nonce', 'N/A'))
+            tx_block = datos_nodo.get('block_index')
+            tx_block_hash = datos_nodo.get('block_hash')
+            tx_confirmations = datos_nodo.get('confirmations', 0)
+            tx_status = datos_nodo.get('status', 'unknown')
+            tx_timestamp = datos_nodo.get('timestamp', tx.get('timestamp', 0))
+        else:
+            # Fallback: usar datos locales
+            tx_hash_mostrar = tx_hash_completo
+            tx_from = tx.get('remitente', tx.get('from', 'N/A'))
+            tx_to = tx.get('destinatario', tx.get('to', 'N/A'))
+            tx_amount = tx.get('monto', tx.get('amount', 0))
+            tx_nonce = tx.get('nonce', 'N/A')
+            tx_block = tx.get('block_index')
+            tx_block_hash = tx.get('block_hash')
+            tx_confirmations = 0 if tx_block is None else 1
+            tx_status = tx.get('status', 'pending' if tx_block is None else 'confirmed')
+            tx_timestamp = tx.get('timestamp', 0)
+        
+        # Construir el popup con los datos
+        layout = BoxLayout(orientation='vertical', padding=dp(15), spacing=dp(10))
+        
+        tipo = "ENVIADO" if es_envio else "RECIBIDO"
+        estado_texto = "✅ CONFIRMADO" if tx_status == 'confirmed' else "⏳ PENDIENTE"
+        
+        # Formatear timestamp
+        try:
+            if isinstance(tx_timestamp, (int, float)) and tx_timestamp > 0:
+                fecha = datetime.fromtimestamp(tx_timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                fecha = 'N/A'
+        except:
+            fecha = 'N/A'
+        
+        # Contenido del popup
         contenido = f"""[b]Tipo:[/b] {tipo}
-[b]Estado:[/b] {estado}
-[b]Monto:[/b] {float(tx['monto']):,.2f} VLC
+[b]Estado:[/b] {estado_texto}
+[b]Monto:[/b] {float(tx_amount):.2f} VLC
 
-[b]Hash Transacción (completo):[/b]
-{tx['tx_hash_completo']}
+[b]Hash Transacción:[/b]
+{tx_hash_mostrar}
 
 [b]De:[/b]
-{tx['remitente']}
+{tx_from}
 
 [b]Para:[/b]
-{tx['destinatario']}
+{tx_to}
 
-[b]Nonce:[/b] {tx['nonce']}
-[b]Timestamp:[/b] {datetime.fromtimestamp(tx['timestamp']).strftime('%Y-%m-%d %H:%M:%S') if tx.get('timestamp') else 'N/A'}
+[b]Nonce:[/b] {tx_nonce}
+[b]Timestamp:[/b] {fecha}
 """
         
-        if tx.get('block_index') is not None:
+        # Añadir datos de bloque si existen
+        if tx_block is not None:
             contenido += f"""
-[b]Bloque:[/b] #{tx['block_index']}
-[b]Block Hash:[/b]
-{tx['block_hash']}
+[b]Bloque:[/b] #{tx_block}
+[b]Confirmaciones:[/b] {tx_confirmations}
 """
+            if tx_block_hash:
+                contenido += f"[b]Block Hash:[/b]\n{tx_block_hash}\n"
         
+        # Scroll con el contenido
         scroll = ScrollView(size_hint=(1, 1))
         label = Label(
             text=contenido, 
@@ -791,25 +868,20 @@ class MainScreen(Screen):
         layout.add_widget(box_botones)
         
         pop = Popup(
-            title=f"Tx: {tx['tx_hash_corto']}", 
+            title=f"Tx: {tx_hash_mostrar[:16]}...", 
             content=layout, 
             size_hint=(0.95, 0.85)
         )
         
         def abrir_explorer(instance):
-            # Abrir el bloque en lugar de la transacción específica
-            if tx.get('block_index') is not None:
-                url = f"{NODE_URL}/explorer/block/{tx['block_index']}"
-            else:
-                # Si está pendiente, abrir el mempool
-                url = f"{NODE_URL}/explorer"
-            
+            # Abrir la transacción específica en el explorer
+            url = f"{NODE_URL}/explorer/tx/{tx_hash_mostrar}"
             print(f"Abriendo explorer: {url}")
             webbrowser.open(url)
-            self.mostrar_notificacion("Explorador", f"Abriendo bloque #{tx.get('block_index', 'N/A')}")
+            self.mostrar_notificacion("Explorador", "Abriendo transacción en explorer")
         
         def copiar_hash(instance):
-            Clipboard.copy(tx['tx_hash_completo'])
+            Clipboard.copy(tx_hash_mostrar)
             notif = Popup(
                 title="Copiado", 
                 content=Label(text="Hash copiado al portapapeles"), 
@@ -1055,7 +1127,7 @@ class MainScreen(Screen):
                                             timeout=5
                                         )
                                         if r_download_check.status_code == 200:
-                                            Clock.schedule_once(lambda dt: self.cerrar_popup_cargando(), 0)
+                                            Clock.schedule_once(lambda dt:                       self.cerrar_popup_cargando(), 0)
                                             Clock.schedule_once(lambda dt: self.mostrar_notificacion(
                                                 "Info", 
                                                 "Ya tienes este producto. Ve a 'Mis Compras' para descargarlo."
